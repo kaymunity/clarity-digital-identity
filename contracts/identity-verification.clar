@@ -8,6 +8,7 @@
 (define-constant err-unauthorized (err u103))
 (define-constant err-invalid-stage (err u104))
 (define-constant err-stage-not-complete (err u105))
+(define-constant err-identity-revoked (err u106))
 
 ;; Data Variables
 (define-map identities
@@ -19,7 +20,9 @@
         verified: bool,
         verification-date: uint,
         verification-stage: uint,
-        verification-history: (list 10 {stage: uint, verifier: principal, timestamp: uint})
+        verification-history: (list 10 {stage: uint, verifier: principal, timestamp: uint}),
+        revoked: bool,
+        revocation-date: uint
     }
 )
 
@@ -58,7 +61,9 @@
             verified: false,
             verification-date: u0,
             verification-stage: u0,
-            verification-history: (list)
+            verification-history: (list),
+            revoked: false,
+            revocation-date: u0
         }))
     ))
 )
@@ -68,20 +73,43 @@
         (identity (map-get? identities user))
         (current-stage (get verification-stage (unwrap-panic identity)))
     )
-    (if (and (is-some identity) (can-verify-stage tx-sender stage))
-        (if (is-eq current-stage (- stage u1))
-            (ok (map-set identities user (merge (unwrap-panic identity) {
-                verification-stage: stage,
-                verification-history: (unwrap-panic (as-max-len? 
-                    (concat (get verification-history (unwrap-panic identity)) 
-                    (list {stage: stage, verifier: tx-sender, timestamp: block-height}))
-                    u10))
-                ,verified: (is-eq stage u3)
-                ,verification-date: (if (is-eq stage u3) block-height (get verification-date (unwrap-panic identity)))
-            })))
-            err-stage-not-complete
+    (if (is-some identity)
+        (if (get revoked (unwrap-panic identity))
+            err-identity-revoked
+            (if (can-verify-stage tx-sender stage)
+                (if (is-eq current-stage (- stage u1))
+                    (ok (map-set identities user (merge (unwrap-panic identity) {
+                        verification-stage: stage,
+                        verification-history: (unwrap-panic (as-max-len? 
+                            (concat (get verification-history (unwrap-panic identity)) 
+                            (list {stage: stage, verifier: tx-sender, timestamp: block-height}))
+                            u10))
+                        ,verified: (is-eq stage u3)
+                        ,verification-date: (if (is-eq stage u3) block-height (get verification-date (unwrap-panic identity)))
+                    })))
+                    err-stage-not-complete
+                )
+                err-unauthorized
+            )
         )
-        err-unauthorized
+        err-not-registered
+    ))
+)
+
+(define-public (revoke-identity (user principal))
+    (let (
+        (identity (map-get? identities user))
+    )
+    (if (is-owner)
+        (if (is-some identity)
+            (ok (map-set identities user (merge (unwrap-panic identity) {
+                verified: false,
+                revoked: true,
+                revocation-date: block-height
+            })))
+            err-not-registered
+        )
+        err-not-owner
     ))
 )
 
@@ -129,7 +157,10 @@
         (identity (map-get? identities user))
     )
     (if (is-some identity)
-        (ok (get verified (unwrap-panic identity)))
+        (ok (and 
+            (get verified (unwrap-panic identity))
+            (not (get revoked (unwrap-panic identity)))
+        ))
         err-not-registered
     ))
 )

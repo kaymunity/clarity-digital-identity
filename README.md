@@ -18,6 +18,8 @@ A blockchain-based digital identity verification system that allows users to:
 - Timestamp-based verification tracking
 - Owner-controlled verifier management with stage permissions
 - Verification status safeguards and stage completion requirements
+- Identity revocation system with timestamp tracking
+- Revocation status checks in verification process
 
 ## Security
 
@@ -27,6 +29,7 @@ A blockchain-based digital identity verification system that allows users to:
 - Verification stages must be completed sequentially
 - Complete verification history is maintained
 - Verification status cannot be tampered with
+- Revoked identities cannot be re-verified without re-registration
 
 ## Use Cases
 
@@ -35,3 +38,12 @@ A blockchain-based digital identity verification system that allows users to:
 - Decentralized identity management
 - Multi-party verification workflows
 - Regulatory compliance requiring multiple verification steps
+- Identity revocation for compromised or fraudulent accounts
+
+## Recent Enhancements
+
+Added identity revocation functionality:
+- Contract owner can revoke verified identities
+- Revoked identities cannot proceed with verification
+- Verification status checks include revocation status
+- Revocation dates are tracked for audit purposes

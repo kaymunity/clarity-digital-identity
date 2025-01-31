@@ -88,3 +88,36 @@ Clarinet.test({
         assertEquals(result.result, '(ok true)');
     },
 });
+
+Clarinet.test({
+    name: "Test identity revocation",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const deployer = accounts.get('deployer')!;
+        const user1 = accounts.get('wallet_1')!;
+        const stage1Verifier = accounts.get('wallet_2')!;
+        
+        let block = chain.mineBlock([
+            // Register and verify identity
+            Tx.contractCall('identity-verification', 'register-identity', [
+                types.utf8("John Doe"),
+                types.ascii("1990-01-01"),
+                types.buff('0x1234567890123456789012345678901234567890123456789012345678901234')
+            ], user1.address),
+            
+            // Revoke identity
+            Tx.contractCall('identity-verification', 'revoke-identity', [
+                types.principal(user1.address)
+            ], deployer.address)
+        ]);
+        
+        // Verify revocation status
+        let result = chain.callReadOnlyFn(
+            'identity-verification',
+            'is-verified',
+            [types.principal(user1.address)],
+            deployer.address
+        );
+        
+        assertEquals(result.result, '(ok false)');
+    },
+});

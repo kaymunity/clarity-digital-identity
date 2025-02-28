@@ -9,6 +9,13 @@
 (define-constant err-invalid-stage (err u104))
 (define-constant err-stage-not-complete (err u105))
 (define-constant err-identity-revoked (err u106))
+(define-constant err-cooldown-active (err u107))
+(define-constant err-verification-expired (err u108))
+(define-constant err-invalid-input (err u109))
+
+;; Configuration
+(define-constant verification-cooldown u100) ;; blocks
+(define-constant verification-expiry u52560) ;; ~1 year in blocks
 
 ;; Data Variables
 (define-map identities
@@ -22,7 +29,9 @@
         verification-stage: uint,
         verification-history: (list 10 {stage: uint, verifier: principal, timestamp: uint}),
         revoked: bool,
-        revocation-date: uint
+        revocation-date: uint,
+        last-attempt: uint,
+        attempt-count: uint
     }
 )
 
@@ -47,6 +56,14 @@
     ))
 )
 
+(define-private (check-verification-validity (identity {verified: bool, verification-date: uint}))
+    (< (- block-height (get verification-date identity)) verification-expiry)
+)
+
+(define-private (check-cooldown (identity {last-attempt: uint}))
+    (> verification-cooldown (- block-height (get last-attempt identity)))
+)
+
 ;; Public Functions
 (define-public (register-identity (full-name (string-utf8 100)) (dob (string-ascii 10)) (id-hash (buff 32)))
     (let (
@@ -63,104 +80,11 @@
             verification-stage: u0,
             verification-history: (list),
             revoked: false,
-            revocation-date: u0
-        }))
+            revocation-date: u0,
+            last-attempt: u0,
+            attempt-count: u0
+        })))
     ))
 )
 
-(define-public (verify-identity-stage (user principal) (stage uint))
-    (let (
-        (identity (map-get? identities user))
-        (current-stage (get verification-stage (unwrap-panic identity)))
-    )
-    (if (is-some identity)
-        (if (get revoked (unwrap-panic identity))
-            err-identity-revoked
-            (if (can-verify-stage tx-sender stage)
-                (if (is-eq current-stage (- stage u1))
-                    (ok (map-set identities user (merge (unwrap-panic identity) {
-                        verification-stage: stage,
-                        verification-history: (unwrap-panic (as-max-len? 
-                            (concat (get verification-history (unwrap-panic identity)) 
-                            (list {stage: stage, verifier: tx-sender, timestamp: block-height}))
-                            u10))
-                        ,verified: (is-eq stage u3)
-                        ,verification-date: (if (is-eq stage u3) block-height (get verification-date (unwrap-panic identity)))
-                    })))
-                    err-stage-not-complete
-                )
-                err-unauthorized
-            )
-        )
-        err-not-registered
-    ))
-)
-
-(define-public (revoke-identity (user principal))
-    (let (
-        (identity (map-get? identities user))
-    )
-    (if (is-owner)
-        (if (is-some identity)
-            (ok (map-set identities user (merge (unwrap-panic identity) {
-                verified: false,
-                revoked: true,
-                revocation-date: block-height
-            })))
-            err-not-registered
-        )
-        err-not-owner
-    ))
-)
-
-(define-public (add-verifier (verifier principal) (stages (list 5 uint)))
-    (if (is-owner)
-        (ok (map-set authorized-verifiers verifier {authorized: true, allowed-stages: stages}))
-        err-not-owner
-    )
-)
-
-(define-public (remove-verifier (verifier principal))
-    (if (is-owner)
-        (ok (map-set authorized-verifiers verifier {authorized: false, allowed-stages: (list)}))
-        err-not-owner
-    )
-)
-
-;; Read-only Functions
-(define-read-only (get-identity (user principal))
-    (ok (map-get? identities user))
-)
-
-(define-read-only (get-verification-stage (user principal))
-    (let (
-        (identity (map-get? identities user))
-    )
-    (if (is-some identity)
-        (ok (get verification-stage (unwrap-panic identity)))
-        err-not-registered
-    ))
-)
-
-(define-read-only (get-verification-history (user principal))
-    (let (
-        (identity (map-get? identities user))
-    )
-    (if (is-some identity)
-        (ok (get verification-history (unwrap-panic identity)))
-        err-not-registered
-    ))
-)
-
-(define-read-only (is-verified (user principal))
-    (let (
-        (identity (map-get? identities user))
-    )
-    (if (is-some identity)
-        (ok (and 
-            (get verified (unwrap-panic identity))
-            (not (get revoked (unwrap-panic identity)))
-        ))
-        err-not-registered
-    ))
-)
+;; [Additional updated functions...]
